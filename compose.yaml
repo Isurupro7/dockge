@@ -1,10 +1,11 @@
 services:
   dockge:
-    image: louislam/dockge:1
+    image: ${DOCKGE_IMAGE:-louislam/dockge:1}
     restart: unless-stopped
     ports:
       # Host Port : Container Port
       - 5001:5001
+      - ${DOCKGE_SFTP_PORT:-2222}:${DOCKGE_SFTP_PORT:-2222}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
@@ -20,3 +21,4 @@ services:
     environment:
       # Tell Dockge where is your stacks directory
       - DOCKGE_STACKS_DIR=/opt/stacks
+      - DOCKGE_SFTP_PORT=${DOCKGE_SFTP_PORT:-2222}

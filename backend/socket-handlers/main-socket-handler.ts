@@ -64,6 +64,29 @@ export class MainSocketHandler extends SocketHandler {
             }
         });
 
+        socket.on("getSftpInfo", async (callback) => {
+            try {
+                checkLogin(socket);
+                if (!server.sftpServer) {
+                    callback({
+                        ok: true,
+                        available: false,
+                        port: null,
+                        directories: [],
+                    });
+                    return;
+                }
+                callback({
+                    ok: true,
+                    available: true,
+                    port: server.sftpServer.port,
+                    directories: await server.sftpServer.getUserDirectories(socket.userID),
+                });
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
+
         // Login by token
         socket.on("loginByToken", async (token, callback) => {
             const clientIP = await server.getClientIP(socket);
@@ -344,6 +367,7 @@ export class MainSocketHandler extends SocketHandler {
                     throw new ValidationError("Invalid password");
                 }
                 await R.store(user);
+                server.sftpServer?.disconnectUser(userID);
                 if (userID !== socket.userID) {
                     server.disconnectAllSocketClients(userID);
                 }
@@ -376,6 +400,7 @@ export class MainSocketHandler extends SocketHandler {
                 }
                 await R.trash(user);
                 server.disconnectAllSocketClients(userID);
+                server.sftpServer?.disconnectUser(userID);
                 callback({ ok: true,
                     msg: "User deleted successfully." });
             } catch (e) {
@@ -399,6 +424,7 @@ export class MainSocketHandler extends SocketHandler {
                 let user = await doubleCheckPassword(socket, password.currentPassword);
                 await user.resetPassword(password.newPassword);
 
+                server.sftpServer?.disconnectUser(user.id);
                 server.disconnectAllSocketClients(user.id, socket.id);
 
                 callback({

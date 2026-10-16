@@ -74,6 +74,20 @@ Dockge is now running on http://localhost:5001
 
 The first account created during setup is the administrator. Administrators can create accounts and assign roles and CPU/memory quotas from **Settings → User accounts**. Regular users can have quotas; administrators are unrestricted. Existing stacks remain administrator-owned; stacks created by a regular user are visible and manageable only by that account. Remote agents, global settings, and the host console are administrator-only.
 
+Users can connect to Dockge over SFTP with their Dockge username and password using clients such as WinSCP. In **Settings → SFTP access**, each user can see the connection port and the folders available to them. Access is read/write and limited to bind-mounted directories located inside their own local stack folders; named Docker volumes, host directories outside the stack, and remote-agent stacks are not exposed. Dockge creates missing in-stack bind-mount directories before starting a stack, so they are owned by the Dockge process and writable over SFTP without manual permission changes. Existing directories keep their current ownership and permissions. Accounts with two-factor authentication enabled cannot use this password-only SFTP endpoint.
+
+The default SFTP port is `2222`. The supplied `compose.yaml` publishes this port automatically. If it is already in use, set `DOCKGE_SFTP_PORT` in the Dockge compose `.env` file to another free port and recreate the container. The SFTP host key is stored in `data/sftp_host_key`; keep it with the Dockge data when backing up or moving the installation. The published port is reachable on the host's network interfaces; use a firewall to limit who can connect.
+
+To run the SFTP feature from this source checkout, build and select this checkout's image instead of pulling the upstream image:
+
+```bash
+npm ci
+npm run build:frontend
+docker build --target release -f docker/Dockerfile -t dockge-custom .
+```
+
+Set `DOCKGE_IMAGE=dockge-custom` in the Dockge compose `.env` file, then run `docker compose up -d --force-recreate`.
+
 Quota values are maximum aggregate Compose limits per account, summed across saved stacks and their fixed `deploy.replicas` counts, whether or not a stack is currently running. A value of `0` means unlimited. When a CPU quota is set, every service in a user's stack must specify a fixed `deploy.resources.limits.cpus`; when a memory quota is set, every service must specify `deploy.resources.limits.memory`. Resource values that depend on Compose variable interpolation are not accepted for a limited resource. Compose `include`, `extends`, `scale`, and global deployment mode are not supported while a quota is active because their resource totals cannot be bounded from the stack file alone. For example:
 
 ```yaml
@@ -123,11 +137,12 @@ compose:
 ```
 services:
   dockge:
-    image: louislam/dockge:1
+    image: ${DOCKGE_IMAGE:-louislam/dockge:1}
     restart: unless-stopped
     ports:
       # Host Port:Container Port
       - 5001:5001
+      - ${DOCKGE_SFTP_PORT:-2222}:${DOCKGE_SFTP_PORT:-2222}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
@@ -144,6 +159,7 @@ services:
     environment:
       # Tell Dockge where your stacks directory is
       - DOCKGE_STACKS_DIR=/opt/stacks
+      - DOCKGE_SFTP_PORT=${DOCKGE_SFTP_PORT:-2222}
       # Both PUID and PGID must be set for it to do anything
       - PUID=1000 # Set the stack file/dir ownership to this user
       - PGID=1000 # Set the stack file/dir ownership to this group

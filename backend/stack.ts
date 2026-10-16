@@ -20,6 +20,71 @@ import { InteractiveTerminal, Terminal } from "./terminal";
 import childProcessAsync from "promisify-child-process";
 import { Settings } from "./settings";
 
+export interface ComposeBindMount {
+    type?: string;
+    source?: string;
+    bind?: {
+        create_host_path?: boolean;
+    };
+}
+
+interface ComposeServiceConfig {
+    volumes?: ComposeBindMount[];
+}
+
+interface ComposeConfig {
+    services?: Record<string, ComposeServiceConfig>;
+}
+
+export async function prepareBindMountDirectories(stackRootPath: string, volumes: ComposeBindMount[]): Promise<void> {
+    const stackRoot = await fsAsync.realpath(stackRootPath);
+    for (const volume of volumes) {
+        if (volume.type !== "bind" || typeof volume.source !== "string" || volume.bind?.create_host_path === false) {
+            continue;
+        }
+        const sourcePath = path.resolve(volume.source);
+        if (!isPathInside(stackRoot, sourcePath) || sourcePath === stackRoot) {
+            continue;
+        }
+
+        let existingAncestor = sourcePath;
+        while (true) {
+            try {
+                await fsAsync.lstat(existingAncestor);
+                break;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+                    throw error;
+                }
+                const parent = path.dirname(existingAncestor);
+                if (parent === existingAncestor) {
+                    throw new Error(`Unable to find an existing parent for bind mount ${sourcePath}`);
+                }
+                existingAncestor = parent;
+            }
+        }
+
+        const realAncestor = await fsAsync.realpath(existingAncestor);
+        if (!isPathInside(stackRoot, realAncestor)) {
+            log.warn("bind-mount", `Skipping host path outside stack directory: ${sourcePath}`);
+            continue;
+        }
+
+        try {
+            await fsAsync.mkdir(sourcePath, { recursive: true });
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+                throw error;
+            }
+        }
+    }
+}
+
+function isPathInside(root: string, candidate: string): boolean {
+    const relativePath = path.relative(root, candidate);
+    return relativePath === "" || (relativePath !== ".." && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath));
+}
+
 export class Stack {
 
     name: string;
@@ -205,6 +270,7 @@ export class Stack {
     }
 
     async deploy(socket : DockgeSocket) : Promise<number> {
+        await this.prepareBindMountDirectories();
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
         let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("up", "-d", "--remove-orphans"), this.path);
         if (exitCode !== 0) {
@@ -419,6 +485,7 @@ export class Stack {
     }
 
     async start(socket: DockgeSocket) {
+        await this.prepareBindMountDirectories();
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
         let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("up", "-d", "--remove-orphans"), this.path);
         if (exitCode !== 0) {
@@ -468,11 +535,28 @@ export class Stack {
             return exitCode;
         }
 
+        await this.prepareBindMountDirectories();
         exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("up", "-d", "--remove-orphans"), this.path);
         if (exitCode !== 0) {
             throw new Error("Failed to restart, please check the terminal output for more information.");
         }
         return exitCode;
+    }
+
+    private async prepareBindMountDirectories(): Promise<void> {
+        const result = await childProcessAsync.spawn(
+            "docker",
+            this.getComposeOptions("config", "--format", "json"),
+            {
+                cwd: this.path,
+                encoding: "utf-8",
+            }
+        );
+        const config = JSON.parse(result.stdout?.toString() ?? "") as ComposeConfig;
+        await prepareBindMountDirectories(
+            this.fullPath,
+            Object.values(config.services ?? {}).flatMap((service) => service.volumes ?? [])
+        );
     }
 
     async joinCombinedTerminal(socket: DockgeSocket) {

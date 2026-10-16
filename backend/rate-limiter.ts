@@ -66,6 +66,13 @@ export const loginRateLimiter = new KumaRateLimiter({
     errorMessage: "Too frequently, try again later."
 });
 
+export const sftpLoginRateLimiter = new KumaRateLimiter({
+    tokensPerInterval: 20,
+    interval: "minute",
+    fireImmediately: true,
+    errorMessage: "Too frequently, try again later."
+});
+
 export const apiRateLimiter = new KumaRateLimiter({
     tokensPerInterval: 60,
     interval: "minute",

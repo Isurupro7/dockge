@@ -5,6 +5,7 @@
             <div class="fs-4 fw-bold">Dockge</div>
             <div>{{ $t("Version") }}: {{ $root.info.version }}</div>
             <div class="frontend-version">{{ $t("Frontend Version") }}: {{ $root.frontendVersion }}</div>
+            <div class="refork-attribution">{{ $t("Reforked by") }}</div>
 
             <div v-if="!$root.isFrontendBackendVersionMatched" class="alert alert-warning mt-4" role="alert">
                 ⚠️ {{ $t("Frontend Version do not match backend version!") }}
@@ -61,6 +62,12 @@ export default {
     .dark & {
         color: #333333;
     }
+}
+
+.refork-attribution {
+    margin-top: 0.25em;
+    font-size: 0.85em;
+    color: #888888;
 }
 
 </style>

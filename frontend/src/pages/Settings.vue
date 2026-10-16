@@ -89,6 +89,9 @@ export default {
                 about: {
                     title: this.$t("About"),
                 },
+                sftp: {
+                    title: this.$t("SFTP access"),
+                },
             };
             if (this.$root.isAdmin) {
                 menus.accounts = {

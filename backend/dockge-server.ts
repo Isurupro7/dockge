@@ -37,6 +37,7 @@ import { AgentSocketHandler } from "./agent-socket-handler";
 import { AgentSocket } from "../common/agent-socket";
 import { ManageAgentSocketHandler } from "./socket-handlers/manage-agent-socket-handler";
 import { Terminal } from "./terminal";
+import { SftpServer } from "./sftp-server";
 
 export class DockgeServer {
     app : Express;
@@ -79,6 +80,8 @@ export class DockgeServer {
     jwtSecret : string = "";
 
     stacksDir : string = "";
+
+    sftpServer?: SftpServer;
 
     /**
      *
@@ -394,6 +397,16 @@ export class DockgeServer {
         }
 
         this.jwtSecret = jwtSecretBean.value;
+
+        try {
+            const sftpServer = new SftpServer(this);
+            await sftpServer.start();
+            this.sftpServer = sftpServer;
+        } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            log.error("sftp", `Unable to start SFTP server on port ${process.env.DOCKGE_SFTP_PORT ?? 2222}: ${message}`);
+            this.sftpServer = undefined;
+        }
 
         const userCount = (await R.knex("user").count("id as count").first()).count;
 
@@ -745,6 +758,7 @@ export class DockgeServer {
 
         // TODO: Close all terminals?
 
+        await this.sftpServer?.stop();
         await Database.close();
         Settings.stopCacheCleaner();
     }

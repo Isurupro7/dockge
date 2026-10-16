@@ -146,7 +146,8 @@ export default {
 
     methods: {
         scanFolder() {
-            this.$root.emitAgent(ALL_ENDPOINTS, "requestStackList", (res) => {
+            const endpoint = this.$root.isAdmin ? ALL_ENDPOINTS : "";
+            this.$root.emitAgent(endpoint, "requestStackList", (res) => {
                 this.$root.toastRes(res);
             });
         },
